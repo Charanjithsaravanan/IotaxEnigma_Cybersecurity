@@ -5,6 +5,8 @@ packages. It runs package installation and import/require inside a restricted
 Docker sandbox, records observable behavior, and compares that fingerprint with
 the package's README and metadata.
 
+**Live website:** <https://iotax-enigma-cybersecurity.vercel.app/>
+
 It is designed to catch behavior such as:
 
 - A string utility reading `~/.ssh/id_rsa`.
@@ -12,12 +14,30 @@ It is designed to catch behavior such as:
 - An otherwise unrelated package reading `AWS_SECRET_ACCESS_KEY`.
 - An HTTP client making network requests that are not documented.
 
+## How to open and use the website
+
+1. Open <https://iotax-enigma-cybersecurity.vercel.app/> in any modern browser.
+2. Select **Sign in** and create an account (email/password, Google, or GitHub).
+   If email confirmation is enabled, confirm your email before signing in.
+3. Enter a package name.
+4. Paste the package's README or metadata.
+5. Paste a small Python module or trace note.
+6. Select **Run behavioral fingerprint**.
+7. Review the result: claims, install events, import events, risk score, and
+   mismatch flags.
+
+You can also try the built-in example cases (safe, expected-network, and
+malicious).
+
+If the backend is not connected to the deployed site, the website falls back to
+a browser-only demo analyzer. That fallback does not execute package code and is
+not a real sandbox scan.
+
 ## What is implemented
 
 ### Frontend
 
-The Next.js dashboard is in
-[`Raw_frontend/redteam-dashboard`](./Raw_frontend/redteam-dashboard).
+The Next.js dashboard is in `Raw_frontend/redteam-dashboard`.
 
 - Supabase email/password sign-up and sign-in.
 - Supabase Google and GitHub OAuth buttons.
@@ -31,7 +51,7 @@ The Next.js dashboard is in
 
 ### Backend
 
-The FastAPI service is in [`pkgguard`](./pkgguard).
+The FastAPI service is in `pkgguard`.
 
 - `POST /api/local-scan` accepts pasted package content.
 - A temporary PyPI-style archive is built from the submitted content.
@@ -49,12 +69,16 @@ tables described below. The current dashboard submission form sends
 `ecosystem: "pypi"`; npm registry scans are available through the backend API
 but are not currently selectable in that form.
 
-## Requirements
+## Running locally (optional)
+
+Only needed if you want to run your own copy instead of using the live website.
+
+### Requirements
 
 - Windows 10/11, macOS, or Linux.
 - Node.js 20 or newer.
 - Python 3.10 or newer.
-- Docker Desktop running with Linux containers enabled.
+- Docker Desktop (or Docker Engine) running with Linux containers enabled.
 - A Supabase project for real authentication.
 - Python dependencies from `pkgguard/ai_engine/requirements.txt` and the
   backend dependencies listed below.
@@ -63,7 +87,7 @@ The Docker sandbox is not a substitute for a production malware-analysis
 environment. Use a disposable machine and do not provide real secrets to a
 package under test.
 
-## Supabase setup
+### Supabase setup
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard).
 2. Create or open a project.
@@ -72,23 +96,11 @@ package under test.
 5. Do not use the `service_role` or `sb_secret_...` key in the frontend.
 6. In **Authentication → Providers**, enable Email. Enable Google or GitHub
    only if their OAuth applications are configured.
-7. In **Authentication → URL Configuration**, set the Site URL to:
+7. In **Authentication → URL Configuration**, set the Site URL to
+   `http://localhost:3000` (and add `http://localhost:3000/` as a redirect URL
+   if Supabase asks for one).
 
-```text
-http://localhost:3000
-```
-
-Add this redirect URL if Supabase asks for one:
-
-```text
-http://localhost:3000/
-```
-
-Create the frontend environment file:
-
-```text
-Raw_frontend\redteam-dashboard\.env.local
-```
+Create `.env.local` inside `Raw_frontend/redteam-dashboard`:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
@@ -102,10 +114,9 @@ disabled under **Authentication → Providers → Email**.
 
 ### Optional persistence tables
 
-The new pasted-package flow does not require database tables; it returns the
-scan result directly from the backend. The older registry/cache flow uses
-`packages` and `behavioral_scans`. Create those tables only when using
-`POST /api/scan`:
+The pasted-package flow does not require database tables; it returns the scan
+result directly from the backend. The older registry/cache flow uses `packages`
+and `behavioral_scans`. Create those tables only when using `POST /api/scan`:
 
 ```sql
 create table if not exists public.packages (
@@ -142,44 +153,34 @@ alter table public.behavioral_scans enable row level security;
 For production, use server-side policies or a service-role key only inside the
 backend. Never expose a service-role key to Next.js.
 
-## Run the frontend
+### Start everything
 
-Open PowerShell:
+Use three terminal windows, starting from the repository root.
 
-```powershell
-cd "C:\Users\Charanjith\OneDrive\Desktop\Project\Raw_frontend\redteam-dashboard"
-npm install
-npm run dev
+**Terminal 1: Docker**
+
+Start Docker, then verify it is running:
+
+```bash
+docker info
 ```
 
-Open <http://localhost:3000>.
+The first real scan builds the `behavioral-sandbox:latest` image from
+`pkgguard/sandbox/Dockerfile`. The image contains Python, Node.js, `strace`,
+and the tracing hooks. If Docker is unavailable, the backend returns an
+explicit sandbox error rather than silently claiming that a scan succeeded.
 
-Sign in or create an account. Then:
+**Terminal 2: Backend**
 
-1. Enter a package name.
-2. Paste its README or metadata.
-3. Paste a small Python module or trace note. The current dashboard submission
-   form sends the content as a PyPI-style package.
-4. Select **Run behavioral fingerprint**.
-5. Review the scan result.
-
-If `NEXT_PUBLIC_API_URL` is not present, the frontend uses its local browser
-demo analyzer. If it is present, submission is sent to the Docker-backed
-backend.
-
-## Run the backend
-
-Use a Windows Python interpreter. Open a new PowerShell window and run:
-
-```powershell
-$py = "C:\Users\Charanjith\AppData\Local\Python\pythoncore-3.14-64\python.exe"
-cd "C:\Users\Charanjith\OneDrive\Desktop\Project\pkgguard"
-
-& $py -m pip install -r ".\ai_engine\requirements.txt"
-& $py -m pip install fastapi uvicorn httpx typer rich python-dotenv supabase
+```bash
+cd pkgguard
+python -m pip install -r ai_engine/requirements.txt
+python -m pip install fastapi uvicorn httpx typer rich python-dotenv supabase
 ```
 
-Set backend variables in the same PowerShell window that will run Uvicorn:
+Set the backend variables in the same terminal that will run Uvicorn.
+
+PowerShell (Windows):
 
 ```powershell
 $env:SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co"
@@ -188,48 +189,41 @@ $env:REQUIRE_AUTH = "true"
 $env:USE_MOCK_MODULES = "false"
 ```
 
-For a first local smoke test without authentication, use:
+macOS / Linux:
 
-```powershell
-$env:REQUIRE_AUTH = "false"
+```bash
+export SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
+export SUPABASE_KEY="YOUR_BACKEND_KEY"
+export REQUIRE_AUTH="true"
+export USE_MOCK_MODULES="false"
 ```
 
+For a first smoke test without authentication, set `REQUIRE_AUTH` to `false`.
 When `REQUIRE_AUTH=true`, the backend validates the access token sent by the
-frontend with Supabase. Keep `SUPABASE_KEY` server-side; never put it in
-`Raw_frontend\redteam-dashboard\.env.local`.
+frontend with Supabase. Keep `SUPABASE_KEY` server-side; never put it in the
+frontend `.env.local`.
 
 Start the API:
 
-```powershell
-& $py -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+```bash
+python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Open <http://127.0.0.1:8000/docs> to inspect the API.
 
-## Run the Docker sandbox
+**Terminal 3: Frontend**
 
-1. Start Docker Desktop.
-2. Confirm Linux containers are active.
-3. From the `pkgguard` directory, run:
-
-```powershell
-docker info
+```bash
+cd Raw_frontend/redteam-dashboard
+npm install
+npm run dev
 ```
 
-The first real scan builds the `behavioral-sandbox:latest` image from
-[`pkgguard/sandbox/Dockerfile`](./pkgguard/sandbox/Dockerfile). The image
-contains Python, Node.js, `strace`, and the tracing hooks.
+Open <http://localhost:3000>, sign in, and submit a package. The first sandbox
+request may take several minutes while Docker builds the image.
 
-The sandbox:
-
-- Runs with `--network=none`.
-- Uses a memory and CPU limit.
-- Uses a disposable container for each phase.
-- Provides canary credential files and environment variables for detection.
-- Runs install and import phases separately.
-
-If Docker is unavailable, the backend returns an explicit sandbox error rather
-than silently claiming that a scan succeeded.
+If `NEXT_PUBLIC_API_URL` is removed from `.env.local`, the frontend uses its
+browser-only fallback, which does not execute package code.
 
 ## Test the backend manually
 
@@ -265,56 +259,11 @@ os.environ.get("AWS_SECRET_ACCESS_KEY")
 Run malicious examples only inside the Docker sandbox. Never run them directly
 on your host.
 
-## Complete local startup
-
-Use three PowerShell windows.
-
-### Window 1: Docker
-
-Start Docker Desktop, then verify:
-
-```powershell
-docker info
-```
-
-### Window 2: Backend
-
-```powershell
-$py = "C:\Users\Charanjith\AppData\Local\Python\pythoncore-3.14-64\python.exe"
-cd "C:\Users\Charanjith\OneDrive\Desktop\Project\pkgguard"
-
-$env:SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co"
-$env:SUPABASE_KEY = "YOUR_BACKEND_KEY"
-$env:REQUIRE_AUTH = "true"
-$env:USE_MOCK_MODULES = "false"
-
-& $py -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Check <http://127.0.0.1:8000/docs>.
-
-### Window 3: Frontend
-
-```powershell
-cd "C:\Users\Charanjith\OneDrive\Desktop\Project\Raw_frontend\redteam-dashboard"
-npm install
-npm run dev
-```
-
-Open <http://localhost:3000>, select **Sign in**, create or use a Supabase
-email/password account, then submit a package. The first sandbox request may
-take several minutes while Docker builds the image.
-
-If authentication is not configured yet, set `REQUIRE_AUTH=false` in Window 2.
-The frontend can still run its local browser fallback if
-`NEXT_PUBLIC_API_URL` is removed from `.env.local`, but that fallback does not
-execute package code and is not a real sandbox scan.
-
 ## Deploy the backend to a Docker VPS
 
-The current backend runs Docker commands for each package scan. Deploy it to a
-Linux VPS with Docker installed, such as a DigitalOcean Droplet, Hetzner Cloud
-server, AWS EC2 instance, or another Docker-capable host.
+The backend runs Docker commands for each package scan. Deploy it to a Linux VPS
+with Docker installed, such as a DigitalOcean Droplet, Hetzner Cloud server, AWS
+EC2 instance, or another Docker-capable host.
 
 On the VPS:
 
@@ -347,13 +296,7 @@ docker run -d \
 ```
 
 Put the VPS behind HTTPS using Caddy, Nginx, or a cloud load balancer. The
-public API URL should look like:
-
-```text
-https://api.your-domain.example
-```
-
-Verify the API:
+public API URL should look like `https://api.your-domain.example`. Verify it:
 
 ```bash
 curl https://api.your-domain.example/docs
@@ -365,35 +308,27 @@ Then add this environment variable in the Vercel project settings:
 NEXT_PUBLIC_API_URL=https://api.your-domain.example
 ```
 
-Redeploy Vercel after saving the variable. The frontend will then send
-authenticated scan requests to the VPS instead of using the browser-only
-fallback.
-
-For the deployed frontend at
-<https://iotax-enigma-cybersecurity.vercel.app/>, the backend
-`CORS_ORIGINS` value must include:
-
-```text
-https://iotax-enigma-cybersecurity.vercel.app
-```
+Redeploy Vercel after saving the variable. The deployed frontend at
+<https://iotax-enigma-cybersecurity.vercel.app/> will then send authenticated
+scan requests to the VPS instead of using the browser-only fallback. The backend
+`CORS_ORIGINS` value must include
+`https://iotax-enigma-cybersecurity.vercel.app`.
 
 ## Validation commands
 
-Frontend:
+Frontend (from `Raw_frontend/redteam-dashboard`):
 
-```powershell
-cd "C:\Users\Charanjith\OneDrive\Desktop\Project\Raw_frontend\redteam-dashboard"
+```bash
 npm run lint
 npm run build
 ```
 
-Backend:
+Backend (from `pkgguard`):
 
-```powershell
-cd "C:\Users\Charanjith\OneDrive\Desktop\Project\pkgguard"
-& $py -m compileall -q ai_engine backend sandbox shared
-& $py -m unittest discover -s ai_engine -p "test*.py" -v
-& $py -m unittest discover -s backend -p "test*.py" -v
+```bash
+python -m compileall -q ai_engine backend sandbox shared
+python -m unittest discover -s ai_engine -p "test*.py" -v
+python -m unittest discover -s backend -p "test*.py" -v
 ```
 
 ## Important limitations
