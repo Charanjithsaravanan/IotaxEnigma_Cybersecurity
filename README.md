@@ -310,6 +310,73 @@ The frontend can still run its local browser fallback if
 `NEXT_PUBLIC_API_URL` is removed from `.env.local`, but that fallback does not
 execute package code and is not a real sandbox scan.
 
+## Deploy the backend to a Docker VPS
+
+The current backend runs Docker commands for each package scan. Deploy it to a
+Linux VPS with Docker installed, such as a DigitalOcean Droplet, Hetzner Cloud
+server, AWS EC2 instance, or another Docker-capable host.
+
+On the VPS:
+
+```bash
+git clone https://github.com/Charanjithsaravanan/IotaxEnigma_Cybersecurity.git
+cd IotaxEnigma_Cybersecurity/pkgguard
+docker build -t traceguard-api .
+```
+
+Create a backend `.env` file on the VPS. Do not commit it:
+
+```env
+SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+SUPABASE_KEY=YOUR_SERVER_SIDE_SUPABASE_KEY
+REQUIRE_AUTH=true
+USE_MOCK_MODULES=false
+CORS_ORIGINS=https://iotax-enigma-cybersecurity.vercel.app
+```
+
+Run the API container with access to the VPS Docker daemon:
+
+```bash
+docker run -d \
+  --name traceguard-api \
+  --restart unless-stopped \
+  --env-file .env \
+  -p 8000:8000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  traceguard-api
+```
+
+Put the VPS behind HTTPS using Caddy, Nginx, or a cloud load balancer. The
+public API URL should look like:
+
+```text
+https://api.your-domain.example
+```
+
+Verify the API:
+
+```bash
+curl https://api.your-domain.example/docs
+```
+
+Then add this environment variable in the Vercel project settings:
+
+```text
+NEXT_PUBLIC_API_URL=https://api.your-domain.example
+```
+
+Redeploy Vercel after saving the variable. The frontend will then send
+authenticated scan requests to the VPS instead of using the browser-only
+fallback.
+
+For the deployed frontend at
+<https://iotax-enigma-cybersecurity.vercel.app/>, the backend
+`CORS_ORIGINS` value must include:
+
+```text
+https://iotax-enigma-cybersecurity.vercel.app
+```
+
 ## Validation commands
 
 Frontend:
